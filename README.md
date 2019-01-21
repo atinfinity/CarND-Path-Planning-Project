@@ -65,6 +65,24 @@ the path has processed since last time.
 
 2. There will be some latency between the simulator running and the path planner returning a path, with optimized code usually its not very long maybe just 1-3 time steps. During this delay the simulator will continue using points that it was last given, because of this its a good idea to store the last points you have used so you can have a smooth transition. previous_path_x, and previous_path_y can be helpful for this transition since they show the last points given to the simulator controller with the processed points already removed. You would either return a path that extends this previous path or make sure to create a new path that has a smooth transition with this last path.
 
+## Implementation
+In order to safely navigate a car around a highway track a combination of using Frenet coordinate transformations along with spline interoplation was used. Using Frenet coordinates is a really easy way to specify which lane the car should be in as well as how far down the road it should be.
+
+In Frenet the two coordinates are `d`, `s` where `d` is the distance from the center of the road which cooresponds to the lane the car is in, and `s` is simply the distance along the highway.
+
+### Spline interpolation
+The highway map waypoints are widely spaced so its Frenet outline is very jagged, consisting of line segments with sharp corners. The result of not using any interoplation and simplying relaying on the Frenet transformation with increasing s and constant d is that during the waypoint corner transistions the car experiences alot of acceleration, also the Frenet transformation isnt linear and has the greatest amount non-linearity at the corner cases which causes points to have unequal spacing. Using the spline from spline.h is greatly able to help smooth out the path planning path.
+
+Instead of using the Frenet coordinates on tightly spaced points, only three widely spaced Frenet points are using with dynamic d based on the desired lane, and with s values spaced 30m. This way the car's projected path is nice and smooth and doesnt experience any max acceleration or jerk values. Next was making sure the car could speed up and slow down at a constant acceleration that was less than 10 m/s^2, in order to do this the reference velocity was always incremented or decremented by some constant value that resulted in plus or minus 5 m/s^2(refer to [main.cpp#L454-L457](https://github.com/awbrown90/CarND-Path-Planning-Project/blob/master/src/main.cpp#L454-L457) and [L458-L461](https://github.com/awbrown90/CarND-Path-Planning-Project/blob/master/src/main.cpp#L458-L461)).
+
+Inorder for the ego vehicle to travel at the reference velocity the spline needed to be split into evenly spaced points, where the car would transverse to each point every .02 seconds. To do this the three anchor points where converted to the local vehicle coordinate space where the math was easier to use, and then spline could be linearly approximated with its distance and then `N`(=the number of spaces) could be calculated(refer to [main.cpp#L448](https://github.com/atinfinity/CarND-Path-Planning-Project/blob/master/src/main.cpp#L448)).
+
+### Sensor fusion
+If there wasnt any cars in front of the ego vehicle then the reference speed was 49.5 MPH, chosen so it was just slightly under the speed limit, otherwise the car would start slowing down and also try to see if it can change lanes. The sensor fusion data allowed the ego vehicle to see all the other traffic cars on the road, each traffic car's Frenet values were used to see if it was in the same lane as the car and then how close it was to the ego vehicle(refer to [main.cpp#L324](https://github.com/awbrown90/CarND-Path-Planning-Project/blob/master/src/main.cpp#L324)). This logic using Frenet values was used both for detecting traffic car infront of the ego vehicle as well as seeing if a lane change was safe. If a lane change was safe the ego vehicle simply would change its lane and the spline interoplation would make the lane change smooth(refer to [main.cpp#L334-L339](https://github.com/atinfinity/CarND-Path-Planning-Project/blob/master/src/main.cpp#L334-L339) and [L364-L369](https://github.com/atinfinity/CarND-Path-Planning-Project/blob/master/src/main.cpp#L364-L369)).
+
+### Lane change
+The lane change logic was quite simple, if there was a car in front of the ego vehicle then it would see if it was safe to change to the left lane, if the left lane was not safe then it would try to change to the right lane. Some improvements could be made to this lane change algorithm by projecting further ahead and using a cost function to see if it really resulted in increased speed.
+
 ## Tips
 
 A really helpful resource for doing this project and creating smooth trajectories was using http://kluge.in-chemnitz.de/opensource/spline/, the spline function is in a single hearder file is really easy to use.
